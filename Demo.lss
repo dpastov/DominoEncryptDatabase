@@ -1,0 +1,105 @@
+Option Public
+Option Declare
+
+Public Const W32_LIB = {nnotes.dll}
+Declare Function W32_NSFDbCompactExtended Lib W32_LIB Alias {NSFDbCompactExtended} (ByVal Pathname As String, Options As Long, retStats As Long) As Integer
+Declare Function W32_NSFDbLocalSecInfoSet Lib W32_LIB Alias {NSFDbLocalSecInfoSet} (ByVal hDb As Long, ByVal wOptions As Integer, ByVal EncryptStrength As Integer, ByVal Username As String) As Integer
+Declare Sub W32_OSLoadString Lib W32_LIB Alias {OSLoadString} (ByVal null1 As Long, ByVal sError As Integer, ByVal errstr As String, ByVal lenstr As Integer)
+Declare Function W32_NSFDbOpen Lib W32_LIB Alias {NSFDbOpen} (ByVal dbName As String, hDb As Long) As Integer
+Declare Function W32_NSFDbClose Lib W32_LIB Alias {NSFDbClose} (ByVal hDb As Long) As Integer
+Declare function W32_NSFDbLocalSecInfoGetLocal Lib W32_LIB Alias {NSFDbLocalSecInfoGetLocal} (ByVal hDb As long, state As long, strength As long) As integer
+
+Const ENCRYPT_OPTION_MODIFY = 0
+Const ENCRYPT_OPTION_REMOVE = 2
+
+Const ENCRYPT_STRENGTH_NONE = 0
+Const ENCRYPT_STRENGTH_SIMPLE = 1
+Const ENCRYPT_STRENGTH_MEDIUM = 2
+Const ENCRYPT_STRENGTH_STRONG = 3
+
+Const LSEC_STATE_NONE = 0			'no local security setup
+Const LSEC_STATE_DONE = 1			'local security all Set
+Const LSEC_STATE_NEXTENCRYPT = 2 	'encrypt In Next compact
+Const LSEC_STATE_NEXTDECRYPT = 3 	'decrypt In Next compact
+
+Sub EncryptUpdate(wOption As integer, encrypt As integer)
+	On Error GoTo errh
+	
+	Dim hDb As Long
+	Dim rc As Integer
+	Dim sDb As String
+	Dim retStats As Long
+	
+	sDb = PromptDatabaseAsPath()
+	If sDb = "" Then Exit Sub
+	
+	rc = W32_NSFDbOpen(sDb, hDb)
+	If rc <> 0 Then Exit Sub
+	
+	rc = W32_NSFDbLocalSecInfoSet(hDb, wOption, encrypt, "")
+	If rc <> 0 Then
+		rc = W32_NSFDbCompactExtended(sDb, 0, retStats)
+	End If
+
+	rc = W32_NSFDbClose(hDb)
+	
+	MsgBox "Completed!", 64, "Encryption Update"
+	
+basta:
+	Exit sub
+errh:
+	MsgBox Error$
+	Resume basta
+End Sub
+
+Function PromptDatabaseAsPath() As string
+	Dim ws As New NotesUIWorkspace
+	Dim vPath As Variant
+	Dim sDb As String
+	
+	vPath = ws.Prompt(13, "Database", "Choose...", "", "")
+	If Not IsArray(vPath) Then Exit function
+
+	PromptDatabaseAsPath = vPath(0) & "!!" & vPath(1)
+End Function
+
+Sub EncryptGet()
+	On Error GoTo errh
+
+	Dim sDb As String
+	Dim hDb As Long
+	Dim state As Long
+	Dim encrypt As Long
+	Dim rc As Integer
+
+	sDb = PromptDatabaseAsPath()
+	If sDb = "" Then Exit Sub
+
+	rc = W32_NSFDbOpen(sDb, hDb)
+	If rc <> 0 Then Exit Sub
+	
+	rc = W32_NSFDbLocalSecInfoGetLocal(hDB, state, encrypt)
+	If rc <> 0 Then
+		MsgBox getError(rc)
+		Exit sub
+	End If
+	rc = W32_NSFDbClose(hDb)
+	
+	MsgBox "State: " &CStr(state) & Chr(10) & Chr(13) & "Encrypt: " & CStr(encrypt), 64, "Completed"
+	
+basta:
+	Exit Sub
+errh:
+	MsgBox Error$
+	Resume basta
+End Sub
+
+Function GetError(errnum As Integer) As String
+	Dim s As String*256
+	If IsDefined("WINDOWS") Then
+		W32_OSLoadString 0, errnum And &h03FFFFFFF, s, 256
+	Else
+		'TUX_OSLoadString 0, errnum And &h03FFFFFFF, s, 256
+	End If
+	getError = StrLeft(s, Chr(0))
+End Function
